@@ -1,6 +1,6 @@
 import json
 import time
-from typing import TypedDict, List, Any, Dict
+from typing import TypedDict, List, Any, Dict, Iterator, Optional, AsyncIterator
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -17,6 +17,8 @@ from langchain.retrievers.document_compressors import LLMChainExtractor, LLMChai
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_community.llms.ollama import Ollama
+from langchain_core.runnables import Runnable, RunnableConfig
+from langchain_core.runnables.utils import Input, Output
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_milvus import MilvusCollectionHybridSearchRetriever
 from pymilvus import WeightedRanker, Collection, connections, RRFRanker
@@ -49,6 +51,7 @@ retriever = MilvusCollectionHybridSearchRetriever(
     ],
     top_k=5
 )
+
 
 # 自定义 Retriever 继承 ContextualCompressionRetriever 返回排序后的文档
 class CustomContextualCompressionRetriever(ContextualCompressionRetriever):
@@ -108,6 +111,7 @@ class CustomContextualCompressionRetriever(ContextualCompressionRetriever):
         else:
             return []
 
+
 #文本过滤器
 _filter = LLMChainFilter.from_llm(llm)
 compression_retriever = CustomContextualCompressionRetriever(
@@ -160,6 +164,40 @@ question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
 rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
 
+class CustomStreamRunnableChain(type(rag_chain)):
+    def invoke(self, input: Input, config: Optional[RunnableConfig] = None, **kwargs: Any) -> Output:
+        return rag_chain.invoke(input, config, **kwargs)
+
+    def stream(
+            self,
+            input: Input,
+            config: Optional[RunnableConfig] = None,
+            **kwargs: Optional[Any],
+    ) -> Iterator[Output]:
+        """
+        重载流式输出的stream方法。可以通过流式方式逐步输出。
+
+        Args:
+            input: 传递给Runnable的输入
+            config: 用于运行的配置
+            kwargs: 其他传递的参数
+
+        Returns:
+            Iterator: 逐步输出结果的生成器
+        """
+        # 调用检索链，并在检索或生成时逐步返回结果
+        yield self.invoke(input, config, **kwargs)
+
+    async def astream(
+            self,
+            input: Input,
+            config: Optional[RunnableConfig] = None,
+            **kwargs: Optional[Any],
+    ) -> AsyncIterator[Output]:
+        yield await self.ainvoke(input, config, **kwargs)
+
+stream_chain = CustomStreamRunnableChain()
+
 # 定义状态，包含用户输入、历史聊天记录、上下文和模型答案
 class State(TypedDict):
     input: str
@@ -171,19 +209,23 @@ class State(TypedDict):
 
 # 定义调用模型的方法，用于处理输入和历史聊天记录
 def call_model(state: State):
-    response = rag_chain.invoke(state)  # 调用模型获取上下文和答案
-    return {
-        "chat_history": state["chat_history"] + [
-            HumanMessage(state["input"]),
-            AIMessage(response["answer"]),
-        ],
-        "context": response["context"],
-        "answer": response["answer"],
-        "citations": [
-            {"url": doc.metadata['url'], "title": doc.metadata['title']}
-            for doc in response["context"] if 'url' in doc.metadata and 'title' in doc.metadata
-        ]  # 获取所有文档的引文（URL和标题）
-    }
+    # response = rag_chain.stream(state)  # 调用模型获取上下文和答案
+
+    # 模型逐步生成数据，使用流式输出
+    for chunk in stream_chain.stream(state):
+        print(chunk, end="|", flush=True)
+        json_chunk = json.dumps(
+            {
+                "content": chunk["answer"],
+                "citations": [
+                    {"url": doc.metadata['url'], "title": doc.metadata['title']}
+                    for doc in chunk["context"] if 'url' in doc.metadata and 'title' in doc.metadata
+                ]  # 获取所有文档的引文（URL和标题）
+            }
+        )
+
+        yield f"{json_chunk}\n"
+        # time.sleep(1)  # 这里可以根据实际模型输出的时间删除或调整
 
 
 @app.route('/gpt/chat', methods=['POST'])
@@ -192,7 +234,6 @@ def gpt_response():
         # 获取请求数据
         data = request.get_json()
         messages = data.get('messages', [])
-
 
         # 生成RAG
         rag_urls = []
@@ -223,10 +264,10 @@ def gpt_response():
         }
 
         # 使用模型调用函数
-        result = call_model(initial_state)
-        print(result["answer"])
-        print(result["citations"])
-        return jsonify({'content': result["answer"], 'citations': result["citations"]}), 200
+        # result = call_model(initial_state)
+        # print(result["answer"])
+        # print(result["citations"])
+        # return jsonify({'content': result["answer"], 'citations': result["citations"]}), 200
 
         # def generate_stream():
         #     # 模型逐步生成数据，使用流式输出
@@ -235,9 +276,9 @@ def gpt_response():
         #         json_chunk = json.dumps({'content': chunk})
         #         yield f"{json_chunk}\n"
         #         # time.sleep(1)  # 这里可以根据实际模型输出的时间删除或调整
-        #
-        # # 返回流式响应
-        # return Response(generate_stream(), content_type='application/json')
+
+        # 返回流式响应
+        return Response(call_model(initial_state), content_type='application/json')
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
