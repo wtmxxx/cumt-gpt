@@ -1,1 +1,1 @@
-# A GPT with RAG for CUMT.
+# A local GPT with RAG for CUMT.
