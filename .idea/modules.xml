@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/CUMT_GPT.iml" filepath="$PROJECT_DIR$/.idea/CUMT_GPT.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../../wtmxxx/SchGPT/.idea/SchGPT.iml" filepath="$PROJECT_DIR$/../../wtmxxx/SchGPT/.idea/SchGPT.iml" />
     </modules>
   </component>
 </project>
