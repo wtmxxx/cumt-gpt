@@ -164,39 +164,39 @@ question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
 rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
 
-class CustomStreamRunnableChain(type(rag_chain)):
-    def invoke(self, input: Input, config: Optional[RunnableConfig] = None, **kwargs: Any) -> Output:
-        return rag_chain.invoke(input, config, **kwargs)
+# class CustomStreamRunnableChain(type(rag_chain)):
+#     def invoke(self, input: Input, config: Optional[RunnableConfig] = None, **kwargs: Any) -> Output:
+#         return rag_chain.invoke(input, config, **kwargs)
+#
+#     def stream(
+#             self,
+#             input: Input,
+#             config: Optional[RunnableConfig] = None,
+#             **kwargs: Optional[Any],
+#     ) -> Iterator[Output]:
+#         """
+#         重载流式输出的stream方法。可以通过流式方式逐步输出。
+#
+#         Args:
+#             input: 传递给Runnable的输入
+#             config: 用于运行的配置
+#             kwargs: 其他传递的参数
+#
+#         Returns:
+#             Iterator: 逐步输出结果的生成器
+#         """
+#         # 调用检索链，并在检索或生成时逐步返回结果
+#         yield self.invoke(input, config, **kwargs)
+#
+#     async def astream(
+#             self,
+#             input: Input,
+#             config: Optional[RunnableConfig] = None,
+#             **kwargs: Optional[Any],
+#     ) -> AsyncIterator[Output]:
+#         yield await self.ainvoke(input, config, **kwargs)
 
-    def stream(
-            self,
-            input: Input,
-            config: Optional[RunnableConfig] = None,
-            **kwargs: Optional[Any],
-    ) -> Iterator[Output]:
-        """
-        重载流式输出的stream方法。可以通过流式方式逐步输出。
-
-        Args:
-            input: 传递给Runnable的输入
-            config: 用于运行的配置
-            kwargs: 其他传递的参数
-
-        Returns:
-            Iterator: 逐步输出结果的生成器
-        """
-        # 调用检索链，并在检索或生成时逐步返回结果
-        yield self.invoke(input, config, **kwargs)
-
-    async def astream(
-            self,
-            input: Input,
-            config: Optional[RunnableConfig] = None,
-            **kwargs: Optional[Any],
-    ) -> AsyncIterator[Output]:
-        yield await self.ainvoke(input, config, **kwargs)
-
-stream_chain = CustomStreamRunnableChain()
+# stream_chain = CustomStreamRunnableChain()
 
 # 定义状态，包含用户输入、历史聊天记录、上下文和模型答案
 class State(TypedDict):
@@ -212,7 +212,7 @@ def call_model(state: State):
     # response = rag_chain.stream(state)  # 调用模型获取上下文和答案
 
     # 模型逐步生成数据，使用流式输出
-    for chunk in stream_chain.stream(state):
+    for chunk in rag_chain.stream(state):
         print(chunk, end="|", flush=True)
         json_chunk = json.dumps(
             {
@@ -269,15 +269,6 @@ def gpt_response():
         # print(result["citations"])
         # return jsonify({'content': result["answer"], 'citations': result["citations"]}), 200
 
-        # def generate_stream():
-        #     # 模型逐步生成数据，使用流式输出
-        #     for chunk in rag_chain.stream(initial_state):  # 假设 role_messages 是空列表
-        #         print(chunk, end="|", flush=True)
-        #         json_chunk = json.dumps({'content': chunk})
-        #         yield f"{json_chunk}\n"
-        #         # time.sleep(1)  # 这里可以根据实际模型输出的时间删除或调整
-
-        # 返回流式响应
         return Response(call_model(initial_state), content_type='application/json')
     except Exception as e:
         return jsonify({'error': str(e)}), 500

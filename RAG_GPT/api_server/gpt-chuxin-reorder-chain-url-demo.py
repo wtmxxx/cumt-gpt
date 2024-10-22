@@ -50,6 +50,7 @@ retriever = MilvusCollectionHybridSearchRetriever(
     top_k=5
 )
 
+
 # 自定义 Retriever 继承 ContextualCompressionRetriever 返回排序后的文档
 class CustomContextualCompressionRetriever(ContextualCompressionRetriever):
     def _get_relevant_documents(
@@ -108,6 +109,7 @@ class CustomContextualCompressionRetriever(ContextualCompressionRetriever):
         else:
             return []
 
+
 #文本过滤器
 _filter = LLMChainFilter.from_llm(llm)
 compression_retriever = CustomContextualCompressionRetriever(
@@ -121,7 +123,8 @@ contextualize_q_system_prompt = (
     "重组一个独立的问题，"
     "使其在没有聊天记录的情况下也能被理解。"
     "不要回答问题，只需在必要时重新表述它，否则原样返回问题。"
-    "如果问题中包含‘矿大’或‘中国矿业大学’字样，且其含义为地点（如表示某人或活动将在该地点发生），将其替换为‘学校’；如果不代表地点（如活动名称或特定事件），则保持原样。"
+    # "如果问题中包含‘矿大’或‘中国矿业大学’字样，将其替换为‘学校’"
+    "如果问题中包含‘矿大’或‘中国矿业大学’字样，且其含义为地点（如表示某人或活动将在该地点发生），将其替换为‘学校’。"
 )
 contextualize_q_prompt = ChatPromptTemplate.from_messages(
     [
@@ -193,10 +196,9 @@ def gpt_response():
         data = request.get_json()
         messages = data.get('messages', [])
 
-
         # 生成RAG
         rag_urls = []
-        history_messages = []
+        history_messages = [SystemMessage(content="你好")]
         for message in messages[:-1]:
             if message.get('role') == 'system':
                 history_messages.append(SystemMessage(content=message.get('content')))
@@ -253,7 +255,7 @@ def get_title():
 
         # 定义一个模板，生成标题
         prompt_template = f"""
-            为下面的对话生成一个简洁的标题(只需标题内容，不要添加其他东西，只能包含中文 英文 ： : - — 空格,尽量用中文生成标题)：
+            请为以下对话生成一个简洁明了的标题。标题应仅包含中文、英文、冒号(:、：)、破折号(—、-)以及空格，并尽量使用中文表达。请注意，只需提供标题内容，无需添加其他任何信息。
             对话: {conversation}
         """
 

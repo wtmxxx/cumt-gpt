@@ -1,0 +1,5 @@
+*/test/
+milvus-examples/
+logs/
+*.log
+*/temp/
